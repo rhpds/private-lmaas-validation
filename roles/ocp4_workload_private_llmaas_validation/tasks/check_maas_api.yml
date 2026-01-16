@@ -50,7 +50,7 @@
 
 - name: Check MaaS API HTTPS endpoint
   ansible.builtin.uri:
-    url: "https://{{ _maas_gateway_host }}/health"
+    url: "https://{{ _maas_gateway_host }}"
     method: GET
     validate_certs: "{{ ocp4_workload_private_llmaas_validation_http_validate_certs }}"
     timeout: "{{ ocp4_workload_private_llmaas_validation_http_timeout }}"
