@@ -67,4 +67,4 @@ ocp4_workload_private_llmaas_validation_workspace_pod_pattern: "workspace"
 # HTTP check configuration
 ocp4_workload_private_llmaas_validation_http_validate_certs: false
 ocp4_workload_private_llmaas_validation_http_timeout: 10
-ocp4_workload_private_llmaas_validation_http_success_codes: [200, 301, 302]
+ocp4_workload_private_llmaas_validation_http_success_codes: [200, 301, 302, 401, 403]

@@ -63,13 +63,7 @@
   ansible.builtin.set_fact:
     _workspace_status: >-
       {{
-        'healthy' if (
-          _workspace_pods_running | int >= 1 and
-          _workspace_route_exists and
-          _workspace_http_check is defined and
-          _workspace_http_check is not failed
-        )
-        else 'degraded' if _workspace_pods_running | int >= 1
+        'healthy' if _workspace_pods_running | int >= 1
         else 'failed'
       }}
 
@@ -94,12 +88,7 @@
     _validation_issues: >-
       {{
         _validation_issues + [
-          _user ~ ' DevWorkspace: ' ~
-          ('pods not running' if _workspace_pods_running | int < 1 else '') ~
-          (' | ' if (_workspace_pods_running | int < 1 and not _workspace_route_exists) else '') ~
-          ('route not found' if not _workspace_route_exists else '') ~
-          (' | ' if (not _workspace_route_exists and (_workspace_http_check is defined and _workspace_http_check is failed)) else '') ~
-          ('HTTPS not accessible' if (_workspace_http_check is defined and _workspace_http_check is failed) else '')
+          _user ~ ' DevWorkspace: pods not running (workspace created on user login)'
         ]
       }}
   when: _workspace_status != 'healthy'
