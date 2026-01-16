@@ -36,8 +36,8 @@
   ansible.builtin.set_fact:
     _validation_status: >-
       {{
-        'FAILED' if _validation_failed > 0
-        else 'DEGRADED' if _validation_degraded > 0
+        'FAILED' if (_validation_failed | int) > 0
+        else 'DEGRADED' if (_validation_degraded | int) > 0
         else 'HEALTHY'
       }}
 
