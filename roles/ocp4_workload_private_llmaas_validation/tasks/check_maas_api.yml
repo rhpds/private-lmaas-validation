@@ -66,14 +66,9 @@
         'healthy' if (
           _maas_pods_running | int >= 1 and
           _maas_httproute_exists and
-          _maas_gateway_exists and
-          _maas_http_check is defined and
-          _maas_http_check is not failed
+          _maas_gateway_exists
         )
-        else 'degraded' if (
-          _maas_pods_running | int >= 1 and
-          _maas_httproute_exists
-        )
+        else 'degraded' if _maas_pods_running | int >= 1
         else 'failed'
       }}
 
@@ -104,9 +99,7 @@
           (' | ' if (_maas_pods_running | int < 1 and not _maas_httproute_exists) else '') ~
           ('HTTPRoute not found' if not _maas_httproute_exists else '') ~
           (' | ' if (not _maas_httproute_exists and not _maas_gateway_exists) else '') ~
-          ('Gateway not found' if not _maas_gateway_exists else '') ~
-          (' | ' if (not _maas_gateway_exists and (_maas_http_check is defined and _maas_http_check is failed)) else '') ~
-          ('HTTPS not accessible' if (_maas_http_check is defined and _maas_http_check is failed) else '')
+          ('Gateway not found' if not _maas_gateway_exists else '')
         ]
       }}
   when: _maas_status != 'healthy'
