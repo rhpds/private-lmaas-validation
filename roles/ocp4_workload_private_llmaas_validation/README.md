@@ -22,8 +22,9 @@ This role performs comprehensive health checks on all components deployed in the
 ### Per-User Components
 
 - **Showroom** - Workshop content and labs (showroom-{guid}-user{N} namespaces)
-- **DevWorkspaces** - User development workspaces (wksp-user{N} namespaces)
 - **Llama Stack** - Per-user Llama Stack instances (Argo CD Applications)
+
+**Note:** DevWorkspaces are created on-demand when users log in. The validation checks that the DevSpaces operator is healthy, but does not validate individual user workspaces.
 
 ## Requirements
 
@@ -53,7 +54,6 @@ ocp4_workload_private_llmaas_validation_check_models: true
 ocp4_workload_private_llmaas_validation_check_mcp_servers: true
 ocp4_workload_private_llmaas_validation_check_grafana: true
 ocp4_workload_private_llmaas_validation_check_showroom: true
-ocp4_workload_private_llmaas_validation_check_workspaces: true
 ocp4_workload_private_llmaas_validation_check_llama_stack: true
 ocp4_workload_private_llmaas_validation_check_argocd_apps: true
 ```

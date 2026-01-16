@@ -24,7 +24,9 @@ This collection provides validation roles to verify the health and readiness of 
 ### Per-User Components
 
 - **Showroom** - Workshop content and labs
-- **DevWorkspaces** - User development workspaces (wksp-{user} namespaces)
+- **Llama Stack** - Per-user Llama Stack instances
+
+**Note:** DevWorkspaces are created on-demand when users log in. The validation only checks that the DevSpaces operator is healthy.
 
 ## Roles
 
