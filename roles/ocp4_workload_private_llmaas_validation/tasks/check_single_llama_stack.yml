@@ -1,0 +1,69 @@
+---
+# Validate single user Llama Stack instance
+
+- name: Check Llama Stack Argo CD Application for {{ _user }}
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    name: "llama-stack-instance-{{ _user }}"
+    namespace: "{{ ocp4_workload_private_llmaas_validation_gitops_namespace }}"
+  register: _llama_stack_app
+  ignore_errors: true
+
+- name: Extract Llama Stack application status
+  ansible.builtin.set_fact:
+    _llama_stack_exists: "{{ _llama_stack_app.resources | default([]) | length > 0 }}"
+    _llama_stack_synced: >-
+      {{
+        (_llama_stack_app.resources[0].status.sync.status == 'Synced')
+        if (_llama_stack_app.resources | default([]) | length > 0 and
+            _llama_stack_app.resources[0].status.sync.status is defined)
+        else false
+      }}
+    _llama_stack_healthy: >-
+      {{
+        (_llama_stack_app.resources[0].status.health.status == 'Healthy')
+        if (_llama_stack_app.resources | default([]) | length > 0 and
+            _llama_stack_app.resources[0].status.health.status is defined)
+        else false
+      }}
+
+- name: Determine Llama Stack status for {{ _user }}
+  ansible.builtin.set_fact:
+    _llama_stack_status: >-
+      {{
+        'healthy' if (_llama_stack_exists and _llama_stack_synced and _llama_stack_healthy)
+        else 'degraded' if _llama_stack_exists
+        else 'failed'
+      }}
+
+- name: Add Llama Stack validation result for {{ _user }}
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'Llama Stack (' ~ _user ~ ')',
+          'namespace': ocp4_workload_private_llmaas_validation_gitops_namespace,
+          'status': _llama_stack_status,
+          'details': {
+            'application': 'llama-stack-instance-' ~ _user,
+            'exists': 'Yes' if _llama_stack_exists else 'No',
+            'sync_status': 'Synced' if _llama_stack_synced else 'Not Synced',
+            'health_status': 'Healthy' if _llama_stack_healthy else 'Not Healthy'
+          }
+        }]
+      }}
+
+- name: Add Llama Stack issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          _user ~ ' Llama Stack: ' ~
+          ('Application not found' if not _llama_stack_exists else '') ~
+          ('Not Synced' if (_llama_stack_exists and not _llama_stack_synced) else '') ~
+          (' | ' if (_llama_stack_exists and not _llama_stack_synced and not _llama_stack_healthy) else '') ~
+          ('Not Healthy' if (_llama_stack_exists and _llama_stack_synced and not _llama_stack_healthy) else '')
+        ]
+      }}
+  when: _llama_stack_status != 'healthy'

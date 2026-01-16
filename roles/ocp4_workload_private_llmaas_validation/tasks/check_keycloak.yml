@@ -1,0 +1,117 @@
+---
+# Validate Keycloak deployment
+
+- name: Get all pods in keycloak namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_private_llmaas_validation_keycloak_namespace }}"
+  register: _keycloak_pods
+  ignore_errors: true
+
+- name: Count Keycloak StatefulSet pods
+  ansible.builtin.set_fact:
+    _keycloak_pods_running: >-
+      {{
+        _keycloak_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_keycloak_pod_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Count Keycloak PostgreSQL pods
+  ansible.builtin.set_fact:
+    _keycloak_pgsql_pods_running: >-
+      {{
+        _keycloak_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_keycloak_pgsql_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Count RHBK Operator pods
+  ansible.builtin.set_fact:
+    _rhbk_operator_pods_running: >-
+      {{
+        _keycloak_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_keycloak_operator_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Check Keycloak route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: keycloak
+    namespace: "{{ ocp4_workload_private_llmaas_validation_keycloak_namespace }}"
+  register: _keycloak_route
+  ignore_errors: true
+
+- name: Extract Keycloak route hostname
+  ansible.builtin.set_fact:
+    _keycloak_route_host: "{{ _keycloak_route.resources[0].spec.host | default('') }}"
+    _keycloak_route_exists: "{{ _keycloak_route.resources | default([]) | length > 0 }}"
+
+- name: Check Keycloak HTTPS endpoint
+  ansible.builtin.uri:
+    url: "https://{{ _keycloak_route_host }}"
+    method: GET
+    validate_certs: "{{ ocp4_workload_private_llmaas_validation_http_validate_certs }}"
+    timeout: "{{ ocp4_workload_private_llmaas_validation_http_timeout }}"
+    status_code: "{{ ocp4_workload_private_llmaas_validation_http_success_codes }}"
+  register: _keycloak_http_check
+  ignore_errors: true
+  when: _keycloak_route_exists
+
+- name: Determine Keycloak status
+  ansible.builtin.set_fact:
+    _keycloak_status: >-
+      {{
+        'healthy' if (
+          _keycloak_pods_running | int >= 1 and
+          _keycloak_pgsql_pods_running | int >= 1 and
+          _rhbk_operator_pods_running | int >= 1 and
+          _keycloak_route_exists and
+          _keycloak_http_check is defined and
+          _keycloak_http_check is not failed
+        )
+        else 'degraded' if (
+          _keycloak_pods_running | int >= 1 or
+          _keycloak_pgsql_pods_running | int >= 1
+        )
+        else 'failed'
+      }}
+
+- name: Add Keycloak validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'Keycloak',
+          'namespace': ocp4_workload_private_llmaas_validation_keycloak_namespace,
+          'status': _keycloak_status,
+          'details': {
+            'keycloak_pods': _keycloak_pods_running ~ '/1',
+            'postgresql_pods': _keycloak_pgsql_pods_running ~ '/1',
+            'operator_pods': _rhbk_operator_pods_running ~ '/1',
+            'route': _keycloak_route_host if _keycloak_route_exists else 'Not found',
+            'http_accessible': 'Yes' if (_keycloak_http_check is defined and _keycloak_http_check is not failed) else 'No'
+          }
+        }]
+      }}
+
+- name: Add Keycloak issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          'Keycloak: ' ~
+          ('StatefulSet not running' if _keycloak_pods_running | int < 1 else '') ~
+          ('PostgreSQL not running' if _keycloak_pgsql_pods_running | int < 1 else '') ~
+          ('Operator not running' if _rhbk_operator_pods_running | int < 1 else '') ~
+          ('Route not found' if not _keycloak_route_exists else '') ~
+          ('HTTPS not accessible' if (_keycloak_http_check is defined and _keycloak_http_check is failed) else '')
+        ]
+      }}
+  when: _keycloak_status != 'healthy'

@@ -1,0 +1,70 @@
+---
+# User configuration
+ocp4_workload_private_llmaas_validation_num_users: 1
+ocp4_workload_private_llmaas_validation_user_prefix: "user"
+
+# Component-specific validation toggles
+ocp4_workload_private_llmaas_validation_check_keycloak: true
+ocp4_workload_private_llmaas_validation_check_gitops: true
+ocp4_workload_private_llmaas_validation_check_devspaces_operator: true
+ocp4_workload_private_llmaas_validation_check_maas_api: true
+ocp4_workload_private_llmaas_validation_check_models: true
+ocp4_workload_private_llmaas_validation_check_mcp_servers: true
+ocp4_workload_private_llmaas_validation_check_grafana: true
+ocp4_workload_private_llmaas_validation_check_showroom: true
+ocp4_workload_private_llmaas_validation_check_workspaces: true
+ocp4_workload_private_llmaas_validation_check_llama_stack: true
+ocp4_workload_private_llmaas_validation_check_argocd_apps: true
+
+# Component-specific settings (discovered patterns)
+# Keycloak
+ocp4_workload_private_llmaas_validation_keycloak_namespace: keycloak
+ocp4_workload_private_llmaas_validation_keycloak_pod_pattern: "keycloak-0"
+ocp4_workload_private_llmaas_validation_keycloak_pgsql_pattern: "keycloak-pgsql"
+ocp4_workload_private_llmaas_validation_keycloak_operator_pattern: "rhbk-operator"
+
+# OpenShift GitOps
+ocp4_workload_private_llmaas_validation_gitops_namespace: openshift-gitops
+ocp4_workload_private_llmaas_validation_gitops_controller_pattern: "openshift-gitops-application-controller"
+ocp4_workload_private_llmaas_validation_gitops_server_pattern: "openshift-gitops-server"
+ocp4_workload_private_llmaas_validation_gitops_repo_pattern: "openshift-gitops-repo-server"
+
+# DevSpaces Operator
+ocp4_workload_private_llmaas_validation_devspaces_namespace: openshift-devspaces
+ocp4_workload_private_llmaas_validation_devspaces_gateway_pattern: "che-gateway"
+ocp4_workload_private_llmaas_validation_devspaces_dashboard_pattern: "devspaces-dashboard"
+ocp4_workload_private_llmaas_validation_devspaces_plugin_pattern: "plugin-registry"
+
+# MaaS API
+ocp4_workload_private_llmaas_validation_maas_namespace: maas-api
+ocp4_workload_private_llmaas_validation_maas_pod_pattern: "maas-api"
+ocp4_workload_private_llmaas_validation_maas_httproute_name: "maas-api-route"
+ocp4_workload_private_llmaas_validation_maas_gateway_name: "maas-default-gateway"
+ocp4_workload_private_llmaas_validation_maas_gateway_namespace: openshift-ingress
+
+# Models/vLLM
+ocp4_workload_private_llmaas_validation_models_namespace: llm
+ocp4_workload_private_llmaas_validation_models_pod_pattern: "kserve"
+
+# MCP Servers
+ocp4_workload_private_llmaas_validation_mcp_namespace: lls-demo
+ocp4_workload_private_llmaas_validation_ocp_mcp_pattern: "ocp-mcp-server"
+ocp4_workload_private_llmaas_validation_slack_mcp_pattern: "slack-mcp-server"
+
+# Grafana
+ocp4_workload_private_llmaas_validation_grafana_namespace: grafana
+ocp4_workload_private_llmaas_validation_grafana_pod_pattern: "grafana-deployment"
+
+# Showroom (per-user)
+ocp4_workload_private_llmaas_validation_showroom_namespace_pattern: "showroom-.*-{{ _user }}$"
+ocp4_workload_private_llmaas_validation_showroom_pod_pattern: "showroom"
+ocp4_workload_private_llmaas_validation_showroom_route_name: "showroom"
+
+# DevWorkspaces (per-user)
+ocp4_workload_private_llmaas_validation_workspace_namespace_prefix: "wksp"
+ocp4_workload_private_llmaas_validation_workspace_pod_pattern: "workspace"
+
+# HTTP check configuration
+ocp4_workload_private_llmaas_validation_http_validate_certs: false
+ocp4_workload_private_llmaas_validation_http_timeout: 10
+ocp4_workload_private_llmaas_validation_http_success_codes: [200, 301, 302]

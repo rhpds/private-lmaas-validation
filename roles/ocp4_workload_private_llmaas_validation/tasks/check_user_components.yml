@@ -1,0 +1,21 @@
+---
+# Validate per-user components
+
+- name: Set user name
+  ansible.builtin.set_fact:
+    _user: "{{ ocp4_workload_private_llmaas_validation_user_prefix }}{{ _user_number }}"
+
+# Check Showroom
+- name: Include Showroom check
+  ansible.builtin.include_tasks: check_single_showroom.yml
+  when: ocp4_workload_private_llmaas_validation_check_showroom | bool
+
+# Check DevWorkspace
+- name: Include DevWorkspace check
+  ansible.builtin.include_tasks: check_single_workspace.yml
+  when: ocp4_workload_private_llmaas_validation_check_workspaces | bool
+
+# Check Llama Stack instance
+- name: Include Llama Stack check
+  ansible.builtin.include_tasks: check_single_llama_stack.yml
+  when: ocp4_workload_private_llmaas_validation_check_llama_stack | bool

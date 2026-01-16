@@ -1,0 +1,126 @@
+---
+# Validate single user Showroom instance
+
+- name: Discover Showroom namespace for {{ _user }}
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+  register: _all_namespaces
+  ignore_errors: true
+
+- name: Find Showroom namespace matching user pattern
+  ansible.builtin.set_fact:
+    _showroom_namespace: >-
+      {{
+        _all_namespaces.resources | default([]) |
+        map(attribute='metadata.name') |
+        select('match', ocp4_workload_private_llmaas_validation_showroom_namespace_pattern) |
+        first | default('')
+      }}
+
+- name: Get all pods in Showroom namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ _showroom_namespace }}"
+  register: _showroom_pods
+  ignore_errors: true
+  when: _showroom_namespace != ''
+
+- name: Count Showroom pods by name pattern
+  ansible.builtin.set_fact:
+    _showroom_pods_running: >-
+      {{
+        _showroom_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_showroom_pod_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+        if (_showroom_namespace != '' and _showroom_pods is defined and not _showroom_pods.skipped | default(false))
+        else 0
+      }}
+
+- name: Check Showroom routes
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ _showroom_namespace }}"
+  register: _showroom_routes
+  ignore_errors: true
+  when: _showroom_namespace != ''
+
+- name: Extract Showroom route hostname
+  ansible.builtin.set_fact:
+    _showroom_route_host: >-
+      {{
+        (_showroom_routes.resources | default([]) | first).spec.host | default('')
+        if (_showroom_routes.resources | default([]) | length > 0)
+        else ''
+      }}
+    _showroom_route_exists: >-
+      {{
+        _showroom_namespace != '' and
+        _showroom_routes is defined and
+        not _showroom_routes.skipped | default(false) and
+        (_showroom_routes.resources | default([]) | length > 0)
+      }}
+
+- name: Check Showroom HTTPS endpoint
+  ansible.builtin.uri:
+    url: "https://{{ _showroom_route_host }}"
+    method: GET
+    validate_certs: "{{ ocp4_workload_private_llmaas_validation_http_validate_certs }}"
+    timeout: "{{ ocp4_workload_private_llmaas_validation_http_timeout }}"
+    status_code: "{{ ocp4_workload_private_llmaas_validation_http_success_codes }}"
+  register: _showroom_http_check
+  ignore_errors: true
+  when: _showroom_route_exists
+
+- name: Determine Showroom status for {{ _user }}
+  ansible.builtin.set_fact:
+    _showroom_status: >-
+      {{
+        'healthy' if (
+          _showroom_namespace != '' and
+          _showroom_pods_running | int >= 1 and
+          _showroom_route_exists and
+          _showroom_http_check is defined and
+          _showroom_http_check is not failed
+        )
+        else 'degraded' if (
+          _showroom_namespace != '' and
+          _showroom_pods_running | int >= 1
+        )
+        else 'failed'
+      }}
+
+- name: Add Showroom validation result for {{ _user }}
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'Showroom (' ~ _user ~ ')',
+          'namespace': _showroom_namespace if _showroom_namespace != '' else 'Not found',
+          'status': _showroom_status,
+          'details': {
+            'pods': _showroom_pods_running ~ '/1',
+            'route': _showroom_route_host if _showroom_route_exists else 'Not found',
+            'http_accessible': 'Yes' if (_showroom_http_check is defined and _showroom_http_check is not failed) else 'No'
+          }
+        }]
+      }}
+
+- name: Add Showroom issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          _user ~ ' Showroom: ' ~
+          ('namespace not found (expected pattern: showroom-*-' ~ _user ~ ')' if _showroom_namespace == '' else '') ~
+          ('pods not running' if (_showroom_namespace != '' and _showroom_pods_running | int < 1) else '') ~
+          (' | ' if (_showroom_namespace != '' and _showroom_pods_running | int < 1 and not _showroom_route_exists) else '') ~
+          ('route not found' if (_showroom_namespace != '' and not _showroom_route_exists) else '') ~
+          (' | ' if (_showroom_namespace != '' and not _showroom_route_exists and (_showroom_http_check is defined and _showroom_http_check is failed)) else '') ~
+          ('HTTPS not accessible' if (_showroom_http_check is defined and _showroom_http_check is failed) else '')
+        ]
+      }}
+  when: _showroom_status != 'healthy'

@@ -1,0 +1,15 @@
+---
+# Test playbook for Private LLMaaS validation
+
+- name: Test Private LLMaaS Validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Run Private LLMaaS validation role
+      ansible.builtin.include_role:
+        name: rhpds.private_llmaas_validation.ocp4_workload_private_llmaas_validation
+      vars:
+        ocp4_workload_private_llmaas_validation_num_users: 5
+        ocp4_workload_private_llmaas_validation_user_prefix: "user"

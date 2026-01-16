@@ -1,0 +1,55 @@
+---
+# Main validation orchestration
+
+- name: Initialize validation results list
+  ansible.builtin.set_fact:
+    _validation_results: []
+    _validation_issues: []
+
+- name: Display validation start message
+  ansible.builtin.debug:
+    msg: "Starting Private LLMaaS Workshop validation for {{ ocp4_workload_private_llmaas_validation_num_users }} users..."
+
+# Shared component validation
+- name: Check Keycloak
+  ansible.builtin.include_tasks: check_keycloak.yml
+  when: ocp4_workload_private_llmaas_validation_check_keycloak | bool
+
+- name: Check OpenShift GitOps
+  ansible.builtin.include_tasks: check_gitops.yml
+  when: ocp4_workload_private_llmaas_validation_check_gitops | bool
+
+- name: Check DevSpaces Operator
+  ansible.builtin.include_tasks: check_devspaces_operator.yml
+  when: ocp4_workload_private_llmaas_validation_check_devspaces_operator | bool
+
+- name: Check MaaS API
+  ansible.builtin.include_tasks: check_maas_api.yml
+  when: ocp4_workload_private_llmaas_validation_check_maas_api | bool
+
+- name: Check Models/vLLM
+  ansible.builtin.include_tasks: check_models.yml
+  when: ocp4_workload_private_llmaas_validation_check_models | bool
+
+- name: Check MCP Servers
+  ansible.builtin.include_tasks: check_mcp_servers.yml
+  when: ocp4_workload_private_llmaas_validation_check_mcp_servers | bool
+
+- name: Check Grafana
+  ansible.builtin.include_tasks: check_grafana.yml
+  when: ocp4_workload_private_llmaas_validation_check_grafana | bool
+
+- name: Check Argo CD Applications
+  ansible.builtin.include_tasks: check_argocd_apps.yml
+  when: ocp4_workload_private_llmaas_validation_check_argocd_apps | bool
+
+# Per-user component validation
+- name: Validate per-user components
+  ansible.builtin.include_tasks: check_user_components.yml
+  loop: "{{ range(1, ocp4_workload_private_llmaas_validation_num_users | int + 1) | list }}"
+  loop_control:
+    loop_var: _user_number
+
+# Generate final report
+- name: Generate validation report
+  ansible.builtin.include_tasks: generate_report.yml

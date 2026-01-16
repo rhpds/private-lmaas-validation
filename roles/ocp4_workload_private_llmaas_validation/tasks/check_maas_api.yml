@@ -1,0 +1,112 @@
+---
+# Validate MaaS API deployment
+
+- name: Get all pods in maas-api namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_private_llmaas_validation_maas_namespace }}"
+  register: _maas_pods
+  ignore_errors: true
+
+- name: Count MaaS API pods
+  ansible.builtin.set_fact:
+    _maas_pods_running: >-
+      {{
+        _maas_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_maas_pod_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Check MaaS API HTTPRoute
+  kubernetes.core.k8s_info:
+    api_version: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    name: "{{ ocp4_workload_private_llmaas_validation_maas_httproute_name }}"
+    namespace: "{{ ocp4_workload_private_llmaas_validation_maas_namespace }}"
+  register: _maas_httproute
+  ignore_errors: true
+
+- name: Check MaaS Gateway
+  kubernetes.core.k8s_info:
+    api_version: gateway.networking.k8s.io/v1
+    kind: Gateway
+    name: "{{ ocp4_workload_private_llmaas_validation_maas_gateway_name }}"
+    namespace: "{{ ocp4_workload_private_llmaas_validation_maas_gateway_namespace }}"
+  register: _maas_gateway
+  ignore_errors: true
+
+- name: Extract MaaS Gateway hostname
+  ansible.builtin.set_fact:
+    _maas_gateway_host: >-
+      {{
+        (_maas_gateway.resources[0].spec.listeners[0].hostname | default(''))
+        if (_maas_gateway.resources | default([]) | length > 0)
+        else ''
+      }}
+    _maas_httproute_exists: "{{ _maas_httproute.resources | default([]) | length > 0 }}"
+    _maas_gateway_exists: "{{ _maas_gateway.resources | default([]) | length > 0 }}"
+
+- name: Check MaaS API HTTPS endpoint
+  ansible.builtin.uri:
+    url: "https://{{ _maas_gateway_host }}/health"
+    method: GET
+    validate_certs: "{{ ocp4_workload_private_llmaas_validation_http_validate_certs }}"
+    timeout: "{{ ocp4_workload_private_llmaas_validation_http_timeout }}"
+    status_code: "{{ ocp4_workload_private_llmaas_validation_http_success_codes }}"
+  register: _maas_http_check
+  ignore_errors: true
+  when: _maas_gateway_exists and _maas_gateway_host != ''
+
+- name: Determine MaaS API status
+  ansible.builtin.set_fact:
+    _maas_status: >-
+      {{
+        'healthy' if (
+          _maas_pods_running | int >= 1 and
+          _maas_httproute_exists and
+          _maas_gateway_exists and
+          _maas_http_check is defined and
+          _maas_http_check is not failed
+        )
+        else 'degraded' if (
+          _maas_pods_running | int >= 1 and
+          _maas_httproute_exists
+        )
+        else 'failed'
+      }}
+
+- name: Add MaaS API validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'MaaS API (LiteLLM)',
+          'namespace': ocp4_workload_private_llmaas_validation_maas_namespace,
+          'status': _maas_status,
+          'details': {
+            'pods': _maas_pods_running ~ '/1',
+            'httproute': 'Found' if _maas_httproute_exists else 'Not found',
+            'gateway': _maas_gateway_host if _maas_gateway_exists else 'Not found',
+            'http_accessible': 'Yes' if (_maas_http_check is defined and _maas_http_check is not failed) else 'No'
+          }
+        }]
+      }}
+
+- name: Add MaaS API issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          'MaaS API: ' ~
+          ('Pods not running' if _maas_pods_running | int < 1 else '') ~
+          (' | ' if (_maas_pods_running | int < 1 and not _maas_httproute_exists) else '') ~
+          ('HTTPRoute not found' if not _maas_httproute_exists else '') ~
+          (' | ' if (not _maas_httproute_exists and not _maas_gateway_exists) else '') ~
+          ('Gateway not found' if not _maas_gateway_exists else '') ~
+          (' | ' if (not _maas_gateway_exists and (_maas_http_check is defined and _maas_http_check is failed)) else '') ~
+          ('HTTPS not accessible' if (_maas_http_check is defined and _maas_http_check is failed) else '')
+        ]
+      }}
+  when: _maas_status != 'healthy'

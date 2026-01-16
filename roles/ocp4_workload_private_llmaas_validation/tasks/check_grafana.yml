@@ -1,0 +1,94 @@
+---
+# Validate Grafana deployment
+
+- name: Get all pods in grafana namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_private_llmaas_validation_grafana_namespace }}"
+  register: _grafana_pods
+  ignore_errors: true
+
+- name: Count Grafana pods
+  ansible.builtin.set_fact:
+    _grafana_pods_running: >-
+      {{
+        _grafana_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_grafana_pod_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Check Grafana route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ ocp4_workload_private_llmaas_validation_grafana_namespace }}"
+  register: _grafana_routes
+  ignore_errors: true
+
+- name: Extract Grafana route hostname
+  ansible.builtin.set_fact:
+    _grafana_route_host: >-
+      {{
+        (_grafana_routes.resources | default([]) | first).spec.host | default('')
+        if (_grafana_routes.resources | default([]) | length > 0)
+        else ''
+      }}
+    _grafana_route_exists: "{{ _grafana_routes.resources | default([]) | length > 0 }}"
+
+- name: Check Grafana HTTPS endpoint
+  ansible.builtin.uri:
+    url: "https://{{ _grafana_route_host }}"
+    method: GET
+    validate_certs: "{{ ocp4_workload_private_llmaas_validation_http_validate_certs }}"
+    timeout: "{{ ocp4_workload_private_llmaas_validation_http_timeout }}"
+    status_code: "{{ ocp4_workload_private_llmaas_validation_http_success_codes }}"
+  register: _grafana_http_check
+  ignore_errors: true
+  when: _grafana_route_exists
+
+- name: Determine Grafana status
+  ansible.builtin.set_fact:
+    _grafana_status: >-
+      {{
+        'healthy' if (
+          _grafana_pods_running | int >= 1 and
+          _grafana_route_exists and
+          _grafana_http_check is defined and
+          _grafana_http_check is not failed
+        )
+        else 'degraded' if _grafana_pods_running | int >= 1
+        else 'failed'
+      }}
+
+- name: Add Grafana validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'Grafana',
+          'namespace': ocp4_workload_private_llmaas_validation_grafana_namespace,
+          'status': _grafana_status,
+          'details': {
+            'pods': _grafana_pods_running ~ '/1',
+            'route': _grafana_route_host if _grafana_route_exists else 'Not found',
+            'http_accessible': 'Yes' if (_grafana_http_check is defined and _grafana_http_check is not failed) else 'No'
+          }
+        }]
+      }}
+
+- name: Add Grafana issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          'Grafana: ' ~
+          ('Pods not running' if _grafana_pods_running | int < 1 else '') ~
+          (' | ' if (_grafana_pods_running | int < 1 and not _grafana_route_exists) else '') ~
+          ('Route not found' if not _grafana_route_exists else '') ~
+          (' | ' if (not _grafana_route_exists and (_grafana_http_check is defined and _grafana_http_check is failed)) else '') ~
+          ('HTTPS not accessible' if (_grafana_http_check is defined and _grafana_http_check is failed) else '')
+        ]
+      }}
+  when: _grafana_status != 'healthy'

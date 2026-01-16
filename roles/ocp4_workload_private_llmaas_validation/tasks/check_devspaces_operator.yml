@@ -1,0 +1,87 @@
+---
+# Validate DevSpaces Operator deployment
+
+- name: Get all pods in openshift-devspaces namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_private_llmaas_validation_devspaces_namespace }}"
+  register: _devspaces_pods
+  ignore_errors: true
+
+- name: Count DevSpaces Gateway pods
+  ansible.builtin.set_fact:
+    _devspaces_gateway_pods_running: >-
+      {{
+        _devspaces_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_devspaces_gateway_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Count DevSpaces Dashboard pods
+  ansible.builtin.set_fact:
+    _devspaces_dashboard_pods_running: >-
+      {{
+        _devspaces_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_devspaces_dashboard_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Count DevSpaces Plugin Registry pods
+  ansible.builtin.set_fact:
+    _devspaces_plugin_pods_running: >-
+      {{
+        _devspaces_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_devspaces_plugin_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Determine DevSpaces Operator status
+  ansible.builtin.set_fact:
+    _devspaces_status: >-
+      {{
+        'healthy' if (
+          _devspaces_gateway_pods_running | int >= 1 and
+          _devspaces_dashboard_pods_running | int >= 1 and
+          _devspaces_plugin_pods_running | int >= 1
+        )
+        else 'degraded' if (
+          _devspaces_gateway_pods_running | int >= 1 or
+          _devspaces_dashboard_pods_running | int >= 1
+        )
+        else 'failed'
+      }}
+
+- name: Add DevSpaces Operator validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'DevSpaces Operator',
+          'namespace': ocp4_workload_private_llmaas_validation_devspaces_namespace,
+          'status': _devspaces_status,
+          'details': {
+            'gateway_pods': _devspaces_gateway_pods_running ~ '/1',
+            'dashboard_pods': _devspaces_dashboard_pods_running ~ '/1',
+            'plugin_registry_pods': _devspaces_plugin_pods_running ~ '/1'
+          }
+        }]
+      }}
+
+- name: Add DevSpaces Operator issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          'DevSpaces Operator: ' ~
+          ('Gateway not running' if _devspaces_gateway_pods_running | int < 1 else '') ~
+          (' | ' if (_devspaces_gateway_pods_running | int < 1 and _devspaces_dashboard_pods_running | int < 1) else '') ~
+          ('Dashboard not running' if _devspaces_dashboard_pods_running | int < 1 else '') ~
+          (' | ' if (_devspaces_dashboard_pods_running | int < 1 and _devspaces_plugin_pods_running | int < 1) else '') ~
+          ('Plugin Registry not running' if _devspaces_plugin_pods_running | int < 1 else '')
+        ]
+      }}
+  when: _devspaces_status != 'healthy'

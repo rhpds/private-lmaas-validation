@@ -1,0 +1,73 @@
+---
+# Validate MCP Servers deployment
+
+- name: Get all pods in lls-demo namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_private_llmaas_validation_mcp_namespace }}"
+  register: _mcp_pods
+  ignore_errors: true
+
+- name: Count OCP MCP Server pods
+  ansible.builtin.set_fact:
+    _ocp_mcp_pods_running: >-
+      {{
+        _mcp_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_ocp_mcp_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Count Slack MCP Server pods
+  ansible.builtin.set_fact:
+    _slack_mcp_pods_running: >-
+      {{
+        _mcp_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_slack_mcp_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Determine MCP Servers status
+  ansible.builtin.set_fact:
+    _mcp_status: >-
+      {{
+        'healthy' if (
+          _ocp_mcp_pods_running | int >= 1 and
+          _slack_mcp_pods_running | int >= 1
+        )
+        else 'degraded' if (
+          _ocp_mcp_pods_running | int >= 1 or
+          _slack_mcp_pods_running | int >= 1
+        )
+        else 'failed'
+      }}
+
+- name: Add MCP Servers validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'MCP Servers',
+          'namespace': ocp4_workload_private_llmaas_validation_mcp_namespace,
+          'status': _mcp_status,
+          'details': {
+            'ocp_mcp_pods': _ocp_mcp_pods_running ~ '/1',
+            'slack_mcp_pods': _slack_mcp_pods_running ~ '/1'
+          }
+        }]
+      }}
+
+- name: Add MCP Servers issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          'MCP Servers: ' ~
+          ('OCP MCP Server not running' if _ocp_mcp_pods_running | int < 1 else '') ~
+          (' | ' if (_ocp_mcp_pods_running | int < 1 and _slack_mcp_pods_running | int < 1) else '') ~
+          ('Slack MCP Server not running' if _slack_mcp_pods_running | int < 1 else '')
+        ]
+      }}
+  when: _mcp_status != 'healthy'

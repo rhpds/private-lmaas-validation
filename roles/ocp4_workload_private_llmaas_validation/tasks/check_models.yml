@@ -1,0 +1,50 @@
+---
+# Validate Models/vLLM deployment
+
+- name: Get all pods in llm namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ocp4_workload_private_llmaas_validation_models_namespace }}"
+  register: _models_pods
+  ignore_errors: true
+
+- name: Count vLLM model serving pods
+  ansible.builtin.set_fact:
+    _models_pods_running: >-
+      {{
+        _models_pods.resources | default([]) |
+        selectattr('metadata.name', 'search', ocp4_workload_private_llmaas_validation_models_pod_pattern) |
+        selectattr('status.phase', 'equalto', 'Running') |
+        list | length | int
+      }}
+
+- name: Determine Models status
+  ansible.builtin.set_fact:
+    _models_status: >-
+      {{
+        'healthy' if _models_pods_running | int >= 1
+        else 'failed'
+      }}
+
+- name: Add Models validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'Models/vLLM',
+          'namespace': ocp4_workload_private_llmaas_validation_models_namespace,
+          'status': _models_status,
+          'details': {
+            'model_pods': _models_pods_running ~ '/1+'
+          }
+        }]
+      }}
+
+- name: Add Models issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + ['Models/vLLM: No model serving pods running']
+      }}
+  when: _models_status != 'healthy'

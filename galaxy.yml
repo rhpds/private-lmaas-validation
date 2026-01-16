@@ -1,0 +1,16 @@
+---
+namespace: rhpds
+name: private_llmaas_validation
+version: 1.0.0
+readme: README.md
+authors:
+  - Prakhar Srivastava <psrivast@redhat.com>
+description: Validation role for Private LLMaaS workshop on AWS
+license:
+  - Apache-2.0
+tags:
+  - validation
+  - openshift
+  - llmaas
+  - workshop
+repository: https://github.com/rhpds/private-lmaas-validation

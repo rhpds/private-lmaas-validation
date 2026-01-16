@@ -1,0 +1,76 @@
+---
+# Validate Argo CD Applications
+
+- name: Get all Argo CD Applications
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: "{{ ocp4_workload_private_llmaas_validation_gitops_namespace }}"
+  register: _argocd_apps
+  ignore_errors: true
+
+- name: Count total Argo CD Applications
+  ansible.builtin.set_fact:
+    _argocd_apps_total: "{{ _argocd_apps.resources | default([]) | length | int }}"
+
+- name: Count Synced and Healthy Argo CD Applications
+  ansible.builtin.set_fact:
+    _argocd_apps_healthy: >-
+      {{
+        _argocd_apps.resources | default([]) |
+        selectattr('status.sync.status', 'defined') |
+        selectattr('status.sync.status', 'equalto', 'Synced') |
+        selectattr('status.health.status', 'defined') |
+        selectattr('status.health.status', 'equalto', 'Healthy') |
+        list | length | int
+      }}
+
+- name: Find degraded or failed Argo CD Applications
+  ansible.builtin.set_fact:
+    _argocd_apps_degraded: >-
+      {{
+        _argocd_apps.resources | default([]) |
+        rejectattr('status.sync.status', 'equalto', 'Synced') |
+        map(attribute='metadata.name') |
+        list +
+        _argocd_apps.resources | default([]) |
+        selectattr('status.sync.status', 'equalto', 'Synced') |
+        rejectattr('status.health.status', 'equalto', 'Healthy') |
+        map(attribute='metadata.name') |
+        list
+      }}
+
+- name: Determine Argo CD Applications status
+  ansible.builtin.set_fact:
+    _argocd_apps_status: >-
+      {{
+        'healthy' if (_argocd_apps_total | int > 0 and _argocd_apps_healthy | int == _argocd_apps_total | int)
+        else 'degraded' if (_argocd_apps_healthy | int > 0)
+        else 'failed'
+      }}
+
+- name: Add Argo CD Applications validation result
+  ansible.builtin.set_fact:
+    _validation_results: >-
+      {{
+        _validation_results + [{
+          'component': 'Argo CD Applications',
+          'namespace': ocp4_workload_private_llmaas_validation_gitops_namespace,
+          'status': _argocd_apps_status,
+          'details': {
+            'total': _argocd_apps_total,
+            'healthy': _argocd_apps_healthy,
+            'degraded_apps': (_argocd_apps_degraded | join(', ')) if (_argocd_apps_degraded | length > 0) else 'None'
+          }
+        }]
+      }}
+
+- name: Add Argo CD Applications issues to validation issues list
+  ansible.builtin.set_fact:
+    _validation_issues: >-
+      {{
+        _validation_issues + [
+          'Argo CD Applications: ' ~ (_argocd_apps_total | int - _argocd_apps_healthy | int) ~ ' of ' ~ _argocd_apps_total ~ ' apps not Synced/Healthy: ' ~ (_argocd_apps_degraded | join(', '))
+        ]
+      }}
+  when: _argocd_apps_status != 'healthy'
